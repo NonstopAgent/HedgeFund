@@ -34,7 +34,7 @@ Create a `.env` file in the project root:
 
 ```env
 # Perplexity API Configuration
-PERPLEXITY_API_KEY=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
+PERPLEXITY_API_KEY=
 PERPLEXITY_BASE_URL=https://api.perplexity.ai
 
 # Supabase Configuration (Optional)
