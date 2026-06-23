@@ -1,11 +1,28 @@
-# Octane Global Trust - Predator Investment Engine
+# Octane Capital Lab
 
-A high-leverage multi-agent investment research system using CrewAI and Perplexity Sonar API.
+Octane Capital Lab is a private research prototype for AI and semiconductor
+equity analysis. Phase 1 is research-only: it can run Scout/CIO/Auditor research
+flows and optionally store ticker reports in Supabase. It does not implement
+Robinhood execution, paper trading, or live trading yet.
+
+## Safety defaults
+
+- No hardcoded API keys.
+- Default mode is `TRADING_MODE=research`.
+- Live trading is disabled with `ENABLE_LIVE_TRADING=false`.
+- Supabase is optional; without credentials, the vault stays in standby mode.
+- If a Perplexity key is missing, the research command exits with a clear
+  configuration message instead of falling back to any bundled secret.
+
+If you previously committed or shared a real API key, rotate/delete that key
+before using the project again.
 
 ## Architecture
 
 ### The Scout (`sonar-reasoning-pro`)
-Scans GitHub, Reddit, and tech news for alpha signals in AI and semiconductor stocks. Identifies high-potential tickers based on:
+
+Scans GitHub, Reddit, and tech news for AI/semiconductor research signals:
+
 - GitHub star spikes
 - Developer activity trends
 - Reddit sentiment shifts
@@ -13,41 +30,60 @@ Scans GitHub, Reddit, and tech news for alpha signals in AI and semiconductor st
 - Job postings indicating R&D expansion
 
 ### The Auditor (`sonar-deep-research`)
-Performs deep-dive audits on tickers with confidence scores > 8.0/10. Analyzes:
+
+Performs deep-dive audits on tickers with confidence scores above the configured
+threshold. It analyzes:
+
 - Technical moats and patents
-- SEC filings (10-K, 10-Q)
+- SEC filings
 - Insider trading patterns
 - Financial health metrics
 
 ### The Vault (Supabase)
-Persistent storage for all ticker reports, sentiment scores, and audit findings.
+
+Stores ticker reports, scout signals, and audit findings when Supabase
+credentials are provided.
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Environment Configuration
-Create a `.env` file in the project root:
+### 2. Configure environment
 
-```env
-# Perplexity API Configuration
-PERPLEXITY_API_KEY=
-PERPLEXITY_BASE_URL=https://api.perplexity.ai
+Copy the example file and add your own credentials:
 
-# Supabase Configuration (Optional)
-SUPABASE_URL=your_supabase_url_here
-SUPABASE_KEY=your_supabase_key_here
-
-# Ghost Mode (Optional - runs silently)
-GHOST_MODE=false
+```bash
+cp .env.example .env
 ```
 
-### 3. Supabase Database Setup
+Required for research cycles:
 
-Create a table in Supabase:
+```env
+PERPLEXITY_API_KEY=your_rotated_perplexity_key_here
+```
+
+Optional Supabase storage:
+
+```env
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_KEY=your_supabase_key_here
+```
+
+Keep the safety defaults unless you are working on a later guarded phase:
+
+```env
+TRADING_MODE=research
+ENABLE_LIVE_TRADING=false
+REQUIRE_HUMAN_APPROVAL=true
+```
+
+### 3. Supabase database setup
+
+Create this table if you want persistent ticker reports:
 
 ```sql
 CREATE TABLE ticker_reports (
@@ -73,47 +109,54 @@ CREATE INDEX idx_ticker_reports_ticker ON ticker_reports(ticker);
 
 ## Usage
 
-### Run the Engine
+Run the research command:
+
+```bash
+python -m octane_capital.cli research
+```
+
+The legacy entry point still delegates to the package:
+
 ```bash
 python predator_engine.py
 ```
 
-### Ghost Mode (Silent/Scheduled)
-Set `GHOST_MODE=true` in `.env` for silent operation suitable for cron jobs or scheduled tasks.
+Set `GHOST_MODE=true` in `.env` for quieter scheduled operation.
 
-## Project Structure
+## Project structure
 
-```
-Octane_HedgeFund/
-├── agents/
-│   ├── __init__.py
-│   ├── scout.py          # The Scout agent
-│   └── auditor.py        # The Auditor agent
-├── vault/
-│   ├── __init__.py
-│   └── database.py       # Supabase integration
-├── config.py             # Configuration management
-├── perplexity_client.py  # Perplexity API wrapper
-├── octane_branding.py    # Visual branding utilities
-├── predator_engine.py    # Main orchestration script
+```text
+.
+├── octane_capital/
+│   ├── agents/
+│   │   ├── auditor.py
+│   │   ├── manager.py
+│   │   └── scout.py
+│   ├── vault/
+│   │   └── database.py
+│   ├── branding.py
+│   ├── cli.py
+│   ├── config.py
+│   ├── engine.py
+│   ├── models.py
+│   ├── perplexity_client.py
+│   └── perplexity_llm.py
+├── .env.example
+├── CURSOR_ROBINHOOD_CLAUDE_PLAN.md
+├── predator_engine.py
 ├── requirements.txt
 └── README.md
 ```
 
-## Features
+## Phase status
 
-- **Modular Architecture**: Clean separation of concerns
-- **Octane Branding**: Obsidian/Chrome aesthetic console output
-- **Ghost Mode**: Silent operation for scheduled execution
-- **Confidence Thresholding**: Only audits high-confidence tickers
-- **Persistent Storage**: All findings saved to Supabase
+Phase 1 complete scope:
 
-## Notes
+- Security cleanup
+- Package refactor
+- Fixed imports
+- `.env.example`
+- Research CLI command
 
-- The system will run without Supabase credentials (vault will be in standby mode)
-- Perplexity API rate limits apply
-- Adjust `CONFIDENCE_THRESHOLD` in `config.py` to change audit trigger threshold
-
----
-
-**Octane Global Trust** | Predator Investment Engine
+Future phases should add trade proposal models, deterministic risk checks, paper
+broker simulation, approval workflow, and only then a guarded Robinhood adapter.
