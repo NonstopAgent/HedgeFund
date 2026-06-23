@@ -6,110 +6,91 @@ A safe, Claude-ready research and risk-limited trading system built on CrewAI an
 
 ## Architecture
 
-- **The Scout** (`sonar-reasoning-pro`) — scans for alpha signals in AI/semiconductor equities
-- **The Auditor** (`sonar-deep-research`) — deep-dive due diligence on high-confidence tickers
-- **The CIO** — hierarchical manager coordinating Scout and Auditor (research only, no orders)
-- **The Vault** — Supabase storage for research reports
+```text
+Scout → Auditor → Proposal CIO → Critic → Risk Engine → Paper Broker / Robinhood (guarded)
+```
 
-See `CURSOR_ROBINHOOD_CLAUDE_PLAN.md` for the full build roadmap.
+- **The Scout** (`sonar-reasoning-pro`) — alpha signals in AI/semiconductor equities
+- **The Auditor** (`sonar-deep-research`) — due diligence on high-confidence tickers
+- **The CIO** (CrewAI) — hierarchical research manager
+- **Proposal CIO** (Claude / rule-based fallback) — structured `TradeProposal` JSON
+- **The Critic** — flags weak evidence, hype, and missing risk controls
+- **Risk Engine** — deterministic limits (Claude cannot override)
+- **Paper Broker** — simulated fills before any live execution
+- **Execution Guard** — final gate before Robinhood MCP orders
+- **The Vault** — Supabase + local JSON for proposals, orders, and grades
+
+See `CURSOR_ROBINHOOD_CLAUDE_PLAN.md` for the full roadmap.
 
 ## Setup
 
-### 1. Install dependencies
-
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Configure environment
-
-Copy the example file and add your keys:
-
-```bash
 cp .env.example .env
+# Add PERPLEXITY_API_KEY (required for research)
+# Add ANTHROPIC_API_KEY (optional — enables Claude proposal CIO)
+# Add SUPABASE_URL / SUPABASE_KEY (optional)
 ```
 
-Required for research:
+**Never commit `.env` or hardcode API keys.** Rotate any key that was ever exposed in git history.
 
-```env
-PERPLEXITY_API_KEY=your_perplexity_key_here
-```
+Apply database migrations from `octane_capital/vault/migrations.sql` when using Supabase.
 
-Optional:
-
-```env
-SUPABASE_URL=your_supabase_url_here
-SUPABASE_KEY=your_supabase_key_here
-GHOST_MODE=false
-```
-
-**Never commit `.env` or hardcode API keys.** If a key was ever exposed in git history, rotate it immediately.
-
-### 3. Supabase (optional)
-
-```sql
-CREATE TABLE ticker_reports (
-    id BIGSERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    company_name TEXT,
-    scout_confidence DECIMAL(3,1),
-    alpha_signals JSONB,
-    signal_sources JSONB,
-    scout_summary TEXT,
-    audit_performed BOOLEAN DEFAULT FALSE,
-    audit_data JSONB,
-    revised_confidence DECIMAL(3,1),
-    risk_level VARCHAR(20),
-    investment_thesis TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-## Usage
-
-### Run research (default mode)
+## CLI Commands
 
 ```bash
-python -m octane_capital.cli research
+python3 -m octane_capital.cli research          # Scout/Auditor cycle, no orders
+python3 -m octane_capital.cli paper              # Research + paper broker simulation
+python3 -m octane_capital.cli proposals          # List proposals
+python3 -m octane_capital.cli risk-check --proposal-id <id>
+python3 -m octane_capital.cli approve --proposal-id <id>
+python3 -m octane_capital.cli cancel --proposal-id <id>
+python3 -m octane_capital.cli execute --proposal-id <id>        # dry-run preview (default)
+python3 -m octane_capital.cli execute --proposal-id <id> --live # blocked unless enabled
+python3 -m octane_capital.cli grade --proposal-id <id> --entry-price 100 --exit-price 110
+python3 -m octane_capital.cli backtest
+python3 scripts/print_risk_config.py
 ```
 
-Or via the convenience script:
-
-```bash
-python scripts/run_research.py
-```
-
-### Trading safety defaults
+## Trading Safety Defaults
 
 ```env
 TRADING_MODE=research
 ENABLE_LIVE_TRADING=false
+REQUIRE_HUMAN_APPROVAL=true
 ```
 
-Live execution requires explicit configuration and is not implemented in Phase 1.
+Live execution requires **all** of: `ENABLE_LIVE_TRADING=true`, `TRADING_MODE=live_manual`, human approval, and risk-engine approval.
 
-## Project structure
+## Project Structure
 
 ```text
 octane_capital/
-├── agents/          # Scout, Auditor, CIO
-├── vault/           # Supabase storage
-├── llm/             # Perplexity integrations
-├── config.py        # Environment-based configuration
-├── models.py        # Pydantic research models
-├── engine.py        # Research orchestration
-└── cli.py           # CLI entry point
+├── agents/       scout, auditor, cio, proposal_cio, critic
+├── broker/       paper_broker, robinhood_mcp (stub), execution_guard
+├── risk/         risk_engine, position_sizing, rules
+├── vault/        database, repository, migrations.sql
+├── backtest/     engine, metrics
+├── strategies/   ai_semiconductor_momentum, watchlist
+├── engine.py     orchestration
+└── cli.py        CLI entry point
+tests/
+scripts/
 ```
 
-## Development phases
+## Tests
 
-1. **Phase 1** (current) — security cleanup, package refactor, research CLI
-2. **Phase 2** — trade proposal models and risk engine
-3. **Phase 3** — Claude CIO proposal generation
-4. **Phase 4** — paper broker
-5. **Phase 5** — Robinhood MCP adapter stub + execution guard
-6. **Phase 6** — backtesting
+```bash
+python3 -m pytest tests/ -q
+```
+
+## Robinhood MCP (Phase 5 stub)
+
+```bash
+claude mcp add robinhood-trading --transport http https://agent.robinhood.com/mcp/trading
+```
+
+The Python adapter is a guarded stub — connect MCP manually in Claude Code before live use.
 
 ---
 
