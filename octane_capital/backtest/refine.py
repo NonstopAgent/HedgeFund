@@ -48,12 +48,15 @@ def simulate(ticker: str, bars: list[dict], p: dict, regime_on: dict) -> list[Tr
             i += 1; continue
         if p["require_sma200"] and not (c > sma200):
             i += 1; continue
+        r10 = (c - closes[i - 10]) / closes[i - 10] if closes[i - 10] else 0.0
+        r20 = (c - closes[i - 20]) / closes[i - 20] if closes[i - 20] else 0.0
         atr = _atr(highs[:i + 1], lows[:i + 1], closes[:i + 1], ATR_PERIOD)
         rsi = _rsi(closes[:i + 1], 14)
         if p["rsi_ceiling"] and rsi > p["rsi_ceiling"]:
             i += 1; continue
         score = swing_score(SwingInputs(close=c, sma50=sma50, sma200=sma200, rsi14=rsi,
-                                        atr14=atr, ret_5d=r5, avg_dollar_volume=adv))
+                                        atr14=atr, ret_5d=r5, avg_dollar_volume=adv,
+                                        ret_10d=r10, ret_20d=r20))
         if score < p["min_score"]:
             i += 1; continue
         if p["use_regime"] and not regime_on.get(bars[i]["date"], True):

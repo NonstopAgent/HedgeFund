@@ -95,11 +95,13 @@ def simulate_ticker(ticker: str, bars: list[dict], min_score: float) -> list[Tra
         if not (c > sma50 and r5 > 0):
             i += 1
             continue
+        r10 = (c - closes[i - 10]) / closes[i - 10] if closes[i - 10] else 0.0
+        r20 = (c - closes[i - 20]) / closes[i - 20] if closes[i - 20] else 0.0
         atr = _atr(highs[: i + 1], lows[: i + 1], closes[: i + 1], ATR_PERIOD)
         rsi = _rsi(closes[: i + 1], 14)
         score = swing_score(SwingInputs(
             close=c, sma50=sma50, sma200=sma200, rsi14=rsi,
-            atr14=atr, ret_5d=r5, avg_dollar_volume=adv,
+            atr14=atr, ret_5d=r5, avg_dollar_volume=adv, ret_10d=r10, ret_20d=r20,
         ))
         if score < min_score:
             i += 1

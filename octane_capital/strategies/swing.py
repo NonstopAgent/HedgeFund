@@ -57,6 +57,8 @@ def evaluate_ticker(
         rsi14 = md.rsi(ticker, cfg.RSI_PERIOD)
         atr14 = md.atr(ticker, cfg.ATR_PERIOD)
         ret_5d = md.pct_change(ticker, 5)
+        ret_10d = md.pct_change(ticker, 10)
+        ret_20d = md.pct_change(ticker, 20)
         adv = md.avg_dollar_volume(ticker, 20)
     except MarketDataError:
         return None
@@ -70,6 +72,7 @@ def evaluate_ticker(
     inp = SwingInputs(
         close=close, sma50=sma50, sma200=sma200, rsi14=rsi14,
         atr14=atr14, ret_5d=ret_5d, avg_dollar_volume=adv,
+        ret_10d=ret_10d, ret_20d=ret_20d,
     )
     score = swing_score(inp)
     if score < cfg.SWING_MIN_SCORE:
