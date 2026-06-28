@@ -61,8 +61,10 @@ def evaluate_ticker(
     except MarketDataError:
         return None
 
-    # 3) Setup gate: must be an uptrend with some momentum.
+    # 3) Setup gate: uptrend with momentum; refined to require a full stacked uptrend.
     if not (close > sma50 and ret_5d > 0):
+        return None
+    if getattr(cfg, "REQUIRE_STACKED_UPTREND", False) and not (close > sma200):
         return None
 
     inp = SwingInputs(
@@ -117,16 +119,26 @@ def evaluate_ticker(
         requested_notional=sizing.notional,
         exit_rules=ExitRules(
             stop_loss_pct=round(stop_loss_pct, 4),
-            take_profit_pct=round(min(2 * stop_loss_pct, 2.0), 4),  # 2R target
+            take_profit_pct=round(min(getattr(cfg, "SWING_TARGET_R", 2.0) * stop_loss_pct, 2.0), 4),
             max_hold_days=cfg.SWING_MAX_HOLD_DAYS,
             invalidation_events=["close below ATR stop", "close back under SMA50",
                                  "earnings surprise"],
         ),
-        strategy="ai_semiconductor_swing",
+        strategy="swing_v2",
         entry_price=close,
         atr=atr14,
         stop_price=sizing.stop_price,
     )
+
+
+def market_risk_on(md: MarketData, cfg=config) -> bool:
+    """Regime filter: True unless the broad market (SPY) is below its 200-day SMA."""
+    if not getattr(cfg, "USE_REGIME_FILTER", False):
+        return True
+    try:
+        return md.get_price("SPY") > md.sma("SPY", 200)
+    except Exception:
+        return True  # fail open: never block trading on a data hiccup
 
 
 def generate_swing_proposals(
@@ -135,6 +147,8 @@ def generate_swing_proposals(
     cfg=config,
     account_equity: Optional[float] = None,
 ) -> List[TradeProposal]:
+    if not market_risk_on(md, cfg):
+        return []  # market in a downtrend -> no new swing longs
     proposals: List[TradeProposal] = []
     for t in tickers:
         try:

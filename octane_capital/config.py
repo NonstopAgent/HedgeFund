@@ -71,11 +71,14 @@ class Config:
 
     # ---- Swing strategy / indicators ----
     ATR_PERIOD = _env_int("ATR_PERIOD", 14)
-    ATR_STOP_MULT = _env_float("ATR_STOP_MULT", 1.5)
+    ATR_STOP_MULT = _env_float("ATR_STOP_MULT", 2.0)   # refined: wider stop cuts noise stop-outs
     RSI_PERIOD = _env_int("RSI_PERIOD", 14)
     SWING_MIN_SCORE = _env_float("SWING_MIN_SCORE", 7.0)
     SWING_MIN_HOLD_DAYS = _env_int("SWING_MIN_HOLD_DAYS", 3)
     SWING_MAX_HOLD_DAYS = _env_int("SWING_MAX_HOLD_DAYS", 30)
+    SWING_TARGET_R = _env_float("SWING_TARGET_R", 2.5)             # take-profit at 2.5R
+    REQUIRE_STACKED_UPTREND = _env_bool("REQUIRE_STACKED_UPTREND", "true")  # close > SMA200
+    USE_REGIME_FILTER = _env_bool("USE_REGIME_FILTER", "true")     # only buy when SPY > 200dma
 
     # ---- Quality / "no junk" screen ----
     MIN_PRICE = _env_float("MIN_PRICE", 5.0)
