@@ -1,13 +1,18 @@
 """
-Octane Capital Lab - Pydantic Data Models
-Research, trade proposal, risk, order, and result models.
+Octane Capital Lab - Pydantic Data Models (drop-in replacement)
+Adds RiskLevel enum, swing fields on TradeProposal, strategy tag on grades,
+and ticker/action/notional on TradeResult so the orders audit trail is complete.
 """
 
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class TradeAction(str, Enum):
@@ -41,6 +46,21 @@ class ProposalStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class RiskLevel(str, Enum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+
+    @classmethod
+    def coerce(cls, v) -> "RiskLevel":
+        s = str(v or "").strip().lower()
+        if "high" in s or "elevated" in s:
+            return cls.HIGH
+        if "low" in s:
+            return cls.LOW
+        return cls.MEDIUM
+
+
 class ExitRules(BaseModel):
     stop_loss_pct: float = Field(..., ge=0.0, le=0.5)
     take_profit_pct: Optional[float] = Field(None, ge=0.0, le=2.0)
@@ -50,7 +70,7 @@ class ExitRules(BaseModel):
 
 class TradeProposal(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
     ticker: str
     company_name: Optional[str] = None
     asset_class: AssetClass = AssetClass.EQUITY
@@ -67,6 +87,12 @@ class TradeProposal(BaseModel):
     status: ProposalStatus = ProposalStatus.DRAFT
     requires_human_approval: bool = True
     source_report_id: Optional[str] = None
+
+    # --- swing/risk additions ---
+    strategy: Optional[str] = None
+    entry_price: Optional[float] = None
+    atr: Optional[float] = None
+    stop_price: Optional[float] = None
 
     @field_validator("thesis")
     @classmethod
@@ -90,7 +116,7 @@ class RiskDecision(BaseModel):
     adjusted_position_pct: Optional[float] = None
     adjusted_notional: Optional[float] = None
     max_allowed_loss: Optional[float] = None
-    checked_at: datetime = Field(default_factory=datetime.utcnow)
+    checked_at: datetime = Field(default_factory=_utcnow)
 
 
 class OrderRequest(BaseModel):
@@ -102,6 +128,7 @@ class OrderRequest(BaseModel):
     order_type: str = "market"
     time_in_force: str = "day"
     dry_run: bool = True
+    stop_price: Optional[float] = None
 
 
 class TradeResult(BaseModel):
@@ -109,16 +136,20 @@ class TradeResult(BaseModel):
     broker: str
     mode: TradingMode
     submitted: bool
+    ticker: Optional[str] = None
+    action: Optional[TradeAction] = None
+    notional: Optional[float] = None
     broker_order_id: Optional[str] = None
     filled_quantity: Optional[float] = None
     average_fill_price: Optional[float] = None
     error: Optional[str] = None
-    executed_at: datetime = Field(default_factory=datetime.utcnow)
+    executed_at: datetime = Field(default_factory=_utcnow)
 
 
 class TradeGrade(BaseModel):
     proposal_id: str
     ticker: str
+    strategy: Optional[str] = None
     entry_price: float
     current_or_exit_price: float
     pnl_pct: float
@@ -127,7 +158,7 @@ class TradeGrade(BaseModel):
     risk_management_score: float = Field(..., ge=0.0, le=10.0)
     lesson: str
     should_repeat_strategy: bool
-    graded_at: datetime = Field(default_factory=datetime.utcnow)
+    graded_at: datetime = Field(default_factory=_utcnow)
 
 
 class CriticReview(BaseModel):
@@ -189,73 +220,56 @@ class BacktestResult(BaseModel):
 
 
 class ScoutSignal(BaseModel):
-    """Scout's alpha signal detection output."""
-
     ticker: str = Field(..., description="Stock ticker symbol")
     company_name: str = Field(..., description="Full company name")
-    sentiment_score: float = Field(..., ge=0.0, le=10.0, description="Sentiment/confidence score (0-10)")
-    signals: List[str] = Field(default_factory=list, description="List of alpha signals detected")
-    signal_sources: List[str] = Field(
-        default_factory=list,
-        description="Sources of signals (GitHub, Reddit, Tech News)",
-    )
-    summary: str = Field(..., description="Brief summary of why this ticker has alpha potential")
+    sentiment_score: float = Field(..., ge=0.0, le=10.0)
+    signals: List[str] = Field(default_factory=list)
+    signal_sources: List[str] = Field(default_factory=list)
+    summary: str = Field(...)
 
 
 class MoatAnalysis(BaseModel):
-    """Technical moat analysis component."""
-
-    score: float = Field(..., ge=0.0, le=10.0, description="Moat strength score")
-    findings: List[str] = Field(default_factory=list, description="Key findings about technical moats")
-    patents_mentioned: List[str] = Field(default_factory=list, description="Relevant patents identified")
+    score: float = Field(..., ge=0.0, le=10.0)
+    findings: List[str] = Field(default_factory=list)
+    patents_mentioned: List[str] = Field(default_factory=list)
 
 
 class SECAnalysis(BaseModel):
-    """SEC filings analysis component."""
-
-    score: float = Field(..., ge=0.0, le=10.0, description="SEC analysis score")
-    revenue_trend: str = Field(..., description="Revenue trend: Growing/Stable/Declining")
-    key_metrics: Dict[str, Any] = Field(default_factory=dict, description="Key financial metrics")
-    risk_factors: List[str] = Field(default_factory=list, description="Identified risk factors")
+    score: float = Field(..., ge=0.0, le=10.0)
+    revenue_trend: str = Field(...)
+    key_metrics: Dict[str, Any] = Field(default_factory=dict)
+    risk_factors: List[str] = Field(default_factory=list)
 
 
 class InsiderTrading(BaseModel):
-    """Insider trading pattern analysis."""
-
-    score: float = Field(..., ge=0.0, le=10.0, description="Insider sentiment score")
-    recent_activity: str = Field(..., description="Net Buying/Selling/Neutral")
-    notable_transactions: List[str] = Field(default_factory=list, description="Notable insider transactions")
+    score: float = Field(..., ge=0.0, le=10.0)
+    recent_activity: str = Field(...)
+    notable_transactions: List[str] = Field(default_factory=list)
 
 
 class FinancialHealth(BaseModel):
-    """Financial health metrics."""
-
-    score: float = Field(..., ge=0.0, le=10.0, description="Financial health score")
-    debt_equity_ratio: Optional[float] = Field(None, description="Debt-to-equity ratio")
-    profit_margin: Optional[float] = Field(None, description="Profit margin percentage")
-    summary: str = Field(..., description="Financial health summary")
+    score: float = Field(..., ge=0.0, le=10.0)
+    debt_equity_ratio: Optional[float] = None
+    profit_margin: Optional[float] = None
+    summary: str = Field(...)
 
 
 class FinalAssessment(BaseModel):
-    """Final investment assessment."""
-
-    conviction_score: float = Field(..., ge=0.0, le=10.0, description="Final conviction score (0-10)")
-    risk_level: str = Field(..., description="Risk level: Low/Medium/High")
-    investment_thesis: str = Field(..., description="Detailed investment thesis")
-    recommended_position: str = Field(..., description="Recommended position: Large/Medium/Small/None")
+    conviction_score: float = Field(..., ge=0.0, le=10.0)
+    risk_level: str = Field(...)
+    investment_thesis: str = Field(...)
+    recommended_position: str = Field(...)
 
 
 class AuditReport(BaseModel):
-    """Auditor's comprehensive audit report."""
-
-    ticker: str = Field(..., description="Stock ticker symbol")
-    audit_date: datetime = Field(default_factory=datetime.now, description="Date of audit")
-    moat_analysis: MoatAnalysis = Field(..., description="Technical moat analysis")
-    risk_factors: List[str] = Field(default_factory=list, description="Aggregated risk factors")
-    sec_analysis: SECAnalysis = Field(..., description="SEC filings analysis")
-    insider_trading: InsiderTrading = Field(..., description="Insider trading analysis")
-    financial_health: FinancialHealth = Field(..., description="Financial health analysis")
-    final_assessment: FinalAssessment = Field(..., description="Final investment assessment")
+    ticker: str = Field(...)
+    audit_date: datetime = Field(default_factory=_utcnow)
+    moat_analysis: MoatAnalysis
+    risk_factors: List[str] = Field(default_factory=list)
+    sec_analysis: SECAnalysis
+    insider_trading: InsiderTrading
+    financial_health: FinancialHealth
+    final_assessment: FinalAssessment
 
 
 ResearchCycleResult.model_rebuild()

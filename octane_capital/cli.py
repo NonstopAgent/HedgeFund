@@ -109,20 +109,31 @@ def cmd_execute(args: argparse.Namespace) -> int:
         print("Proposal must be approved before live execution", file=sys.stderr)
         return 1
 
+    from octane_capital.data.market_data import MarketData
+    try:
+        price = MarketData().get_price(proposal.ticker)  # live: prefer Robinhood MCP quote
+    except Exception as e:
+        print(f"Could not fetch price for {proposal.ticker}: {e}", file=sys.stderr)
+        return 1
+
     guard = ExecutionGuard()
-    order = order_from_proposal(proposal, decision, dry_run=dry_run)
-    auth = guard.authorize_order(proposal, decision, order)
+    order = order_from_proposal(proposal, decision, dry_run=dry_run, price=price)
+    already = proposal.status == ProposalStatus.EXECUTED
+    auth = guard.authorize_order(proposal, decision, order, already_executed=already)
     if not auth.authorized and not dry_run:
         print(f"Execution blocked: {auth.reason}", file=sys.stderr)
         return 1
 
     if config.TRADING_MODE == TradingMode.PAPER.value or dry_run:
         broker = PaperBroker()
+        broker.set_price(proposal.ticker, price)
         preview = broker.preview_order(order)
         print(json.dumps(preview.model_dump(mode="json"), indent=2))
         if not dry_run:
             result = broker.place_order(order)
             repo.save_order_result(result)
+            if result.submitted:
+                repo.update_proposal_status(proposal.id, ProposalStatus.EXECUTED)
             print(json.dumps(result.model_dump(mode="json"), indent=2, default=str))
     else:
         broker = RobinhoodMCPBroker(guard)
@@ -131,6 +142,8 @@ def cmd_execute(args: argparse.Namespace) -> int:
         if not dry_run:
             result = broker.place_order(order, proposal=proposal, risk_decision=decision)
             repo.save_order_result(result)
+            if result.submitted:
+                repo.update_proposal_status(proposal.id, ProposalStatus.EXECUTED)
             print(json.dumps(result.model_dump(mode="json"), indent=2, default=str))
 
     return 0
@@ -150,6 +163,7 @@ def cmd_grade(args: argparse.Namespace) -> int:
     grade = TradeGrade(
         proposal_id=proposal.id,
         ticker=proposal.ticker,
+        strategy=proposal.strategy,
         entry_price=entry,
         current_or_exit_price=exit_price,
         pnl_pct=pnl_pct,
@@ -161,6 +175,46 @@ def cmd_grade(args: argparse.Namespace) -> int:
     )
     repo.save_grade(grade)
     print(json.dumps(grade.model_dump(mode="json"), indent=2, default=str))
+    return 0
+
+
+def cmd_swing(_args: argparse.Namespace) -> int:
+    from octane_capital.data.market_data import MarketData
+    from octane_capital.strategies.swing import generate_swing_proposals
+
+    md = MarketData()
+    broker = PaperBroker(market_data=md)
+    equity = broker.get_account().equity
+    proposals = generate_swing_proposals(config.WATCHLIST, md, config, equity)
+    portfolio = broker.portfolio_context()
+    repo = VaultRepository()
+    grades = repo.grades_by_strategy()
+    decisions = RiskEngine().evaluate_batch(proposals, portfolio, grades_by_strategy=grades)
+    for p in proposals:
+        d = decisions[p.id]
+        repo.save_proposal(p)
+        repo.save_risk_decision(p.id, d)
+        flag = "APPROVED" if d.approved else "rejected"
+        size = d.adjusted_notional or 0.0
+        print(f"{p.id[:8]}  {p.ticker:6} score={p.confidence_score:4.1f}  {flag:9} "
+              f"size=${size:6.2f} stop={p.stop_price}")
+    print(f"\n{len(proposals)} proposal(s) from {len(config.WATCHLIST)} tickers "
+          f"(approve one, then: execute --proposal-id <id>)")
+    return 0
+
+
+def cmd_scoreboard(_args: argparse.Namespace) -> int:
+    from octane_capital.strategies.scoreboard import summarize, trust_multiplier
+
+    repo = VaultRepository()
+    data = repo.grades_by_strategy()
+    if not data:
+        print("No graded trades yet — grade some trades first.")
+        return 0
+    for strat, grades in data.items():
+        s = summarize(grades, strat)
+        print(f"{strat}: n={s.n} win={s.win_rate:.0%} avgPnL={s.avg_pnl_pct:+.1%} "
+              f"PF={s.profit_factor:.2f} trust={trust_multiplier(s):.2f}")
     return 0
 
 
@@ -222,6 +276,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("backtest", help="Run a demo backtest")
     p.add_argument("--cash", type=float, default=10000)
     p.set_defaults(func=cmd_backtest)
+
+    sub.add_parser("swing", help="Indicator-driven swing scan -> scored proposals").set_defaults(
+        func=cmd_swing
+    )
+    sub.add_parser("scoreboard", help="Per-strategy graded performance").set_defaults(
+        func=cmd_scoreboard
+    )
 
     return parser
 

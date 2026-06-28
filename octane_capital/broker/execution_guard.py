@@ -1,6 +1,11 @@
 """
-Octane Capital Lab - Execution Guard
+Octane Capital Lab - Execution Guard (drop-in replacement)
 Final gate before any live order reaches a broker.
+
+Audit fix #3: duplicate prevention is now DURABLE. The caller passes
+`already_executed` (computed from the Vault: proposal.status == EXECUTED or an
+existing order row), so a second `execute --live` in a fresh process is blocked.
+Also requires a notional on live orders so the dollar cap can't be skipped.
 """
 
 from dataclasses import dataclass
@@ -22,46 +27,49 @@ class Authorization:
 
 
 class ExecutionGuard:
-    """Authorize or block orders based on mode, config, and risk decisions."""
-
     def __init__(self, cfg=None):
         self.config = cfg or config
-        self._submitted_proposals: set[str] = set()
+        self._submitted_proposals: set[str] = set()  # in-process backup only
 
     def authorize_order(
         self,
         proposal: TradeProposal,
         risk_decision: RiskDecision,
         order: OrderRequest,
+        *,
+        already_executed: bool = False,
     ) -> Authorization:
-        if self.config.TRADING_MODE in (
-            TradingMode.RESEARCH.value,
-            TradingMode.PAPER.value,
-            TradingMode.PROPOSAL.value,
-        ):
-            if not order.dry_run and self.config.TRADING_MODE != TradingMode.PAPER.value:
-                return Authorization(False, "Live execution disabled in this mode")
+        cfg = self.config
+        live = not order.dry_run
 
-        if not order.dry_run and not self.config.ENABLE_LIVE_TRADING:
+        # Mode gating.
+        if cfg.TRADING_MODE in (
+            TradingMode.RESEARCH.value,
+            TradingMode.PROPOSAL.value,
+        ) and live:
+            return Authorization(False, "Live execution disabled in this mode")
+
+        if live and not cfg.ENABLE_LIVE_TRADING:
             return Authorization(False, "ENABLE_LIVE_TRADING=false")
 
-        if (
-            not order.dry_run
-            and self.config.REQUIRE_HUMAN_APPROVAL
-            and proposal.status != ProposalStatus.APPROVED
-        ):
+        if live and cfg.REQUIRE_HUMAN_APPROVAL and proposal.status != ProposalStatus.APPROVED:
             return Authorization(False, "Human approval required")
 
         if not risk_decision.approved:
             return Authorization(False, "Risk engine rejected proposal")
 
-        if proposal.id in self._submitted_proposals and not order.dry_run:
-            return Authorization(False, "Duplicate order prevention")
+        # Durable duplicate prevention.
+        if live and (already_executed or proposal.id in self._submitted_proposals):
+            return Authorization(False, "Duplicate order prevention (already executed)")
 
-        if order.notional and order.notional > self.config.MAX_SINGLE_TRADE_DOLLARS:
-            return Authorization(False, "Order notional exceeds limit")
+        # Dollar cap — require an explicit notional on live orders.
+        if live:
+            if order.notional is None:
+                return Authorization(False, "Live order missing notional — cannot verify cap")
+            if order.notional > cfg.MAX_SINGLE_TRADE_DOLLARS + 1e-9:
+                return Authorization(False, "Order notional exceeds MAX_SINGLE_TRADE_DOLLARS")
 
-        if not order.dry_run:
+        if live:
             self._submitted_proposals.add(proposal.id)
 
         return Authorization(True, "Authorized")

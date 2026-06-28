@@ -134,6 +134,9 @@ class VaultRepository:
                         "broker": result.broker,
                         "mode": result.mode.value,
                         "submitted": result.submitted,
+                        "ticker": result.ticker,
+                        "action": result.action.value if result.action else None,
+                        "notional": result.notional,
                         "broker_order_id": result.broker_order_id,
                         "filled_quantity": result.filled_quantity,
                         "average_fill_price": result.average_fill_price,
@@ -149,3 +152,13 @@ class VaultRepository:
         records.append(grade.model_dump(mode="json"))
         self._write_local("trade_grades", records)
         return True
+
+    def list_grades(self) -> list[dict]:
+        return self._read_local("trade_grades")
+
+    def grades_by_strategy(self) -> dict[str, list[dict]]:
+        out: dict[str, list[dict]] = {}
+        for g in self.list_grades():
+            strat = g.get("strategy") or "unknown"
+            out.setdefault(strat, []).append(g)
+        return out
