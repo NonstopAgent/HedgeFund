@@ -50,3 +50,13 @@ def compute_loss_pcts(equity_history: list[dict], current_equity: float) -> tupl
     daily = max(0.0, (day_open - current_equity) / day_open) if day_open > 0 else 0.0
     weekly = max(0.0, (week_open - current_equity) / week_open) if week_open > 0 else 0.0
     return round(daily, 4), round(weekly, 4)
+
+
+def total_drawdown_pct(equity_history: list[dict], current_equity: float) -> float:
+    """Drawdown from the all-time peak equity. Drives the hard kill-switch."""
+    peak = float(current_equity)
+    for s in equity_history:
+        peak = max(peak, float(s["equity"]))
+    if peak <= 0:
+        return 0.0
+    return round(max(0.0, (peak - current_equity) / peak), 4)

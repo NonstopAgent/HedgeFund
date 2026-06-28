@@ -75,6 +75,11 @@ class RiskEngine:
             reasons.append("daily loss limit breached — no new entries")
         if portfolio.weekly_loss_pct >= cfg.MAX_WEEKLY_LOSS_PCT:
             reasons.append("weekly loss limit breached — no new entries")
+        if portfolio.total_drawdown_pct >= cfg.MAX_TOTAL_DRAWDOWN_PCT:
+            reasons.append(
+                f"max-drawdown kill-switch: down {portfolio.total_drawdown_pct:.0%} from peak "
+                f"(limit {cfg.MAX_TOTAL_DRAWDOWN_PCT:.0%}) — all new entries halted"
+            )
         if portfolio.open_positions >= cfg.MAX_OPEN_POSITIONS:
             reasons.append("max open positions reached")
         if live_execution and not proposal.source_urls and proposal.strategy is None:

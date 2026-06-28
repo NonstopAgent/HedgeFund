@@ -195,6 +195,7 @@ class PortfolioContext(BaseModel):
     daily_loss_pct: float = 0.0
     weekly_loss_pct: float = 0.0
     open_positions: int = 0
+    total_drawdown_pct: float = 0.0   # drawdown from all-time peak equity
 
 
 class ResearchCycleResult(BaseModel):

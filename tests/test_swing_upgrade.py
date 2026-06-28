@@ -110,3 +110,13 @@ def test_high_risk_low_confidence_rejected():
         PortfolioContext(account_equity=200),
     )
     assert not d.approved  # coerced "High Risk" -> HIGH, needs >=9.0
+
+
+def test_max_drawdown_killswitch_halts():
+    # account down 16% from peak, kill-switch limit is 15% -> all new entries halt
+    d = RiskEngine(Config()).evaluate(
+        _swing_proposal(),
+        PortfolioContext(account_equity=170, total_drawdown_pct=0.16),
+    )
+    assert not d.approved
+    assert any("kill-switch" in r for r in d.reasons)

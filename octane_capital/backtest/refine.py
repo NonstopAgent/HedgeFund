@@ -19,11 +19,20 @@ from octane_capital.backtest.walk_forward import (
 
 
 def regime_map(spy_bars: list[dict]) -> dict[str, bool]:
-    """date -> True when SPY closed above its 200-day SMA (market 'risk-on')."""
+    """date -> True only when SPY is above a RISING 200-day SMA (confirmed uptrend).
+
+    Requiring the 200dma to be RISING (not just price > 200dma) keeps the strategy
+    out of bear markets like 2022, where price repeatedly popped above a *falling*
+    average on relief rallies and then reversed."""
     closes = [b["close"] for b in spy_bars]
     on = {}
     for i in range(len(spy_bars)):
-        on[spy_bars[i]["date"]] = (closes[i] > sum(closes[i - 199:i + 1]) / 200) if i >= 200 else True
+        if i < 220:
+            on[spy_bars[i]["date"]] = True
+            continue
+        sma_now = sum(closes[i - 199:i + 1]) / 200
+        sma_prev = sum(closes[i - 219:i - 19]) / 200  # 200dma as of ~20 sessions ago
+        on[spy_bars[i]["date"]] = (closes[i] > sma_now) and (sma_now > sma_prev)
     return on
 
 

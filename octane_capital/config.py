@@ -62,6 +62,9 @@ class Config:
     MAX_DAILY_LOSS_PCT = _env_float("MAX_DAILY_LOSS_PCT", 0.06)
     MAX_WEEKLY_LOSS_PCT = _env_float("MAX_WEEKLY_LOSS_PCT", 0.12)
     MAX_OPEN_POSITIONS = _env_int("MAX_OPEN_POSITIONS", 4)
+    # Hard kill-switch: halt ALL new entries once equity is this far below its peak.
+    # This is the bound that prevents a slow bear-market bleed (e.g. 2022).
+    MAX_TOTAL_DRAWDOWN_PCT = _env_float("MAX_TOTAL_DRAWDOWN_PCT", 0.15)
 
     # ---- Asset permissions (options OFF for now, per plan) ----
     ALLOW_OPTIONS = _env_bool("ALLOW_OPTIONS")

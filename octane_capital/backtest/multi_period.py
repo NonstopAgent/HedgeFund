@@ -47,6 +47,31 @@ def seq_mult(trades, frac=0.20):
     return eq
 
 
+def curve(trades, frac=0.20, cap=None, window=60):
+    """Chronological 20%/trade equity curve. If cap is set, model the kill-switch:
+    skip new entries while drawdown from the rolling peak exceeds cap (re-arms as
+    the rolling peak rolls forward). Returns (final_mult, max_drawdown, halted_n)."""
+    ordered = sorted(trades, key=lambda x: x.entry_date)
+    eq = 1.0
+    hist = [1.0]
+    skipped = 0
+    peak_eq = 1.0
+    for tr in ordered:
+        peak_eq = max(peak_eq, eq)
+        if cap is not None and peak_eq > 0 and (peak_eq - eq) / peak_eq >= cap:
+            skipped += 1            # halted: down >= cap from all-time peak
+            hist.append(eq)
+            continue
+        eq *= (1 + frac * tr.pnl_pct)
+        hist.append(eq)
+    peak = hist[0]
+    mdd = 0.0
+    for v in hist:
+        peak = max(peak, v)
+        mdd = max(mdd, (peak - v) / peak if peak > 0 else 0.0)
+    return eq, mdd, skipped
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--period", default="5y")
@@ -69,8 +94,11 @@ def main(argv=None) -> int:
     s = summarize(trades)
     dates = sorted(x.entry_date for x in trades)
     print(f"\nperiod={a.period} | {len(bt)} tickers w/ data | span {dates[0]}..{dates[-1]}")
-    print(f"  trades={s['trades']}  win={s['win_rate']:.0%}  exp/tr={s['expectancy_pct']:+.2%}  "
-          f"PF={s['profit_factor']}  maxDD(20%seq)={s['seq_max_drawdown']:.0%}")
+    print(f"  trades={s['trades']}  win={s['win_rate']:.0%}  exp/tr={s['expectancy_pct']:+.2%}  PF={s['profit_factor']}")
+    nks = curve(trades)
+    wks = curve(trades, cap=0.15)
+    print(f"  NO kill-switch : maxDD {nks[1]:.0%}")
+    print(f"  15% kill-switch: maxDD {wks[1]:.0%}   (halted {wks[2]} entries while underwater)")
 
     by = {}
     for tr in trades:

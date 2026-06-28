@@ -25,7 +25,7 @@ from octane_capital.models import (
     TradingMode,
     PortfolioContext,
 )
-from octane_capital.risk.loss_tracker import compute_loss_pcts, record_day_open
+from octane_capital.risk.loss_tracker import compute_loss_pcts, record_day_open, total_drawdown_pct
 
 DEFAULT_SLIPPAGE_PCT = 0.001
 
@@ -172,4 +172,5 @@ class PaperBroker:
             daily_loss_pct=daily,
             weekly_loss_pct=weekly,
             open_positions=len(self.get_positions()),
+            total_drawdown_pct=total_drawdown_pct(hist, account.equity),
         )

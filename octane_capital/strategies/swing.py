@@ -135,11 +135,18 @@ def evaluate_ticker(
 
 
 def market_risk_on(md: MarketData, cfg=config) -> bool:
-    """Regime filter: True unless the broad market (SPY) is below its 200-day SMA."""
+    """Regime filter: 'risk-on' only when SPY is above a RISING 200-day SMA.
+    Requiring the 200dma to be rising keeps the strategy out of bear markets
+    (e.g. 2022), where price popped above a falling average and then reversed."""
     if not getattr(cfg, "USE_REGIME_FILTER", False):
         return True
     try:
-        return md.get_price("SPY") > md.sma("SPY", 200)
+        closes = [b.close for b in md.get_history("SPY", 240)]
+        if len(closes) < 220:
+            return True
+        sma_now = sum(closes[-200:]) / 200
+        sma_prev = sum(closes[-220:-20]) / 200
+        return closes[-1] > sma_now and sma_now > sma_prev
     except Exception:
         return True  # fail open: never block trading on a data hiccup
 
