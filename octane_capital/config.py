@@ -82,11 +82,17 @@ class Config:
     MIN_AVG_DOLLAR_VOLUME = _env_float("MIN_AVG_DOLLAR_VOLUME", 20_000_000.0)
     MIN_MARKET_CAP = _env_float("MIN_MARKET_CAP", 2_000_000_000.0)
     EARNINGS_BLACKOUT_DAYS = _env_int("EARNINGS_BLACKOUT_DAYS", 3)
+    # Skip the slow per-name yfinance .info/.calendar calls during live scans
+    # (the curated universe is already large-cap; keeps broad scans fast).
+    QUALITY_FAST = _env_bool("QUALITY_FAST", "true")
 
     WATCHLIST = [
         t.strip().upper()
         for t in os.getenv(
-            "WATCHLIST", "NVDA,AMD,TSM,AVGO,MSFT,GOOGL,META,AMZN,PLTR,ARM"
+            "WATCHLIST",
+            "NVDA,AMD,AVGO,TSM,QCOM,MU,MRVL,ARM,SMCI,ASML,AAPL,MSFT,GOOGL,META,"
+            "AMZN,NFLX,TSLA,ORCL,CRM,ADBE,PLTR,NOW,PANW,CRWD,NET,DDOG,SNOW,UBER,"
+            "SHOP,LLY,UNH,JPM,V,MA,COST,WMT,HD,CAT,GE"
         ).split(",")
         if t.strip()
     ]

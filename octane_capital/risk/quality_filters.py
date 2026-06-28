@@ -44,15 +44,19 @@ def check_quality(ticker: str, md, cfg) -> QualityResult:
     except Exception:
         reasons.append("could not verify liquidity")
 
-    # Market cap — avoid micro-caps (best-effort; skip if unknown).
-    mc = md.market_cap(ticker)
-    if mc is not None and mc < cfg.MIN_MARKET_CAP:
-        reasons.append(f"market cap ${mc:,.0f} < MIN ${cfg.MIN_MARKET_CAP:,.0f}")
+    # Slow per-name checks (market cap + earnings) — skipped when QUALITY_FAST,
+    # because they each cost a separate yfinance network call. The curated
+    # universe is already large-cap, so this is safe for broad scans.
+    if not getattr(cfg, "QUALITY_FAST", False):
+        # Market cap — avoid micro-caps (best-effort; skip if unknown).
+        mc = md.market_cap(ticker)
+        if mc is not None and mc < cfg.MIN_MARKET_CAP:
+            reasons.append(f"market cap ${mc:,.0f} < MIN ${cfg.MIN_MARKET_CAP:,.0f}")
 
-    # Earnings blackout — don't open a swing into an earnings print.
-    dte = md.days_to_earnings(ticker)
-    if dte is not None and 0 <= dte <= cfg.EARNINGS_BLACKOUT_DAYS:
-        reasons.append(f"earnings in {dte}d (<= blackout {cfg.EARNINGS_BLACKOUT_DAYS}d)")
+        # Earnings blackout — don't open a swing into an earnings print.
+        dte = md.days_to_earnings(ticker)
+        if dte is not None and 0 <= dte <= cfg.EARNINGS_BLACKOUT_DAYS:
+            reasons.append(f"earnings in {dte}d (<= blackout {cfg.EARNINGS_BLACKOUT_DAYS}d)")
 
     if reasons:
         return QualityResult(False, reasons)
