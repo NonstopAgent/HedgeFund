@@ -1,119 +1,97 @@
-# Octane Global Trust - Predator Investment Engine
+# Octane Capital Lab
 
-A high-leverage multi-agent investment research system using CrewAI and Perplexity Sonar API.
+A safe, Claude-ready research and risk-limited trading system built on CrewAI and Perplexity Sonar API.
+
+**Important:** This is a private research and paper-trading lab — not a registered investment adviser or public hedge fund. Live trading is disabled by default.
 
 ## Architecture
 
-### The Scout (`sonar-reasoning-pro`)
-Scans GitHub, Reddit, and tech news for alpha signals in AI and semiconductor stocks. Identifies high-potential tickers based on:
-- GitHub star spikes
-- Developer activity trends
-- Reddit sentiment shifts
-- Patent filings
-- Job postings indicating R&D expansion
+```text
+Scout → Auditor → Proposal CIO → Critic → Risk Engine → Paper Broker / Robinhood (guarded)
+```
 
-### The Auditor (`sonar-deep-research`)
-Performs deep-dive audits on tickers with confidence scores > 8.0/10. Analyzes:
-- Technical moats and patents
-- SEC filings (10-K, 10-Q)
-- Insider trading patterns
-- Financial health metrics
+- **The Scout** (`sonar-reasoning-pro`) — alpha signals in AI/semiconductor equities
+- **The Auditor** (`sonar-deep-research`) — due diligence on high-confidence tickers
+- **The CIO** (CrewAI) — hierarchical research manager
+- **Proposal CIO** (Claude / rule-based fallback) — structured `TradeProposal` JSON
+- **The Critic** — flags weak evidence, hype, and missing risk controls
+- **Risk Engine** — deterministic limits (Claude cannot override)
+- **Paper Broker** — simulated fills before any live execution
+- **Execution Guard** — final gate before Robinhood MCP orders
+- **The Vault** — Supabase + local JSON for proposals, orders, and grades
 
-### The Vault (Supabase)
-Persistent storage for all ticker reports, sentiment scores, and audit findings.
+See `CURSOR_ROBINHOOD_CLAUDE_PLAN.md` for the full roadmap.
 
 ## Setup
 
-### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
+cp .env.example .env
+# Add PERPLEXITY_API_KEY (required for research)
+# Add ANTHROPIC_API_KEY (optional — enables Claude proposal CIO)
+# Add SUPABASE_URL / SUPABASE_KEY (optional)
 ```
 
-### 2. Environment Configuration
-Create a `.env` file in the project root:
+**Never commit `.env` or hardcode API keys.** Rotate any key that was ever exposed in git history.
+
+Apply database migrations from `octane_capital/vault/migrations.sql` when using Supabase.
+
+## CLI Commands
+
+```bash
+python3 -m octane_capital.cli research          # Scout/Auditor cycle, no orders
+python3 -m octane_capital.cli paper              # Research + paper broker simulation
+python3 -m octane_capital.cli proposals          # List proposals
+python3 -m octane_capital.cli risk-check --proposal-id <id>
+python3 -m octane_capital.cli approve --proposal-id <id>
+python3 -m octane_capital.cli cancel --proposal-id <id>
+python3 -m octane_capital.cli execute --proposal-id <id>        # dry-run preview (default)
+python3 -m octane_capital.cli execute --proposal-id <id> --live # blocked unless enabled
+python3 -m octane_capital.cli grade --proposal-id <id> --entry-price 100 --exit-price 110
+python3 -m octane_capital.cli backtest
+python3 scripts/print_risk_config.py
+```
+
+## Trading Safety Defaults
 
 ```env
-# Perplexity API Configuration
-PERPLEXITY_API_KEY=
-PERPLEXITY_BASE_URL=https://api.perplexity.ai
-
-# Supabase Configuration (Optional)
-SUPABASE_URL=your_supabase_url_here
-SUPABASE_KEY=your_supabase_key_here
-
-# Ghost Mode (Optional - runs silently)
-GHOST_MODE=false
+TRADING_MODE=research
+ENABLE_LIVE_TRADING=false
+REQUIRE_HUMAN_APPROVAL=true
 ```
 
-### 3. Supabase Database Setup
-
-Create a table in Supabase:
-
-```sql
-CREATE TABLE ticker_reports (
-    id BIGSERIAL PRIMARY KEY,
-    ticker VARCHAR(10) NOT NULL,
-    company_name TEXT,
-    scout_confidence DECIMAL(3,1),
-    alpha_signals JSONB,
-    signal_sources JSONB,
-    scout_summary TEXT,
-    audit_performed BOOLEAN DEFAULT FALSE,
-    audit_data JSONB,
-    revised_confidence DECIMAL(3,1),
-    risk_level VARCHAR(20),
-    investment_thesis TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_ticker_reports_created_at ON ticker_reports(created_at DESC);
-CREATE INDEX idx_ticker_reports_ticker ON ticker_reports(ticker);
-```
-
-## Usage
-
-### Run the Engine
-```bash
-python predator_engine.py
-```
-
-### Ghost Mode (Silent/Scheduled)
-Set `GHOST_MODE=true` in `.env` for silent operation suitable for cron jobs or scheduled tasks.
+Live execution requires **all** of: `ENABLE_LIVE_TRADING=true`, `TRADING_MODE=live_manual`, human approval, and risk-engine approval.
 
 ## Project Structure
 
-```
-Octane_HedgeFund/
-├── agents/
-│   ├── __init__.py
-│   ├── scout.py          # The Scout agent
-│   └── auditor.py        # The Auditor agent
-├── vault/
-│   ├── __init__.py
-│   └── database.py       # Supabase integration
-├── config.py             # Configuration management
-├── perplexity_client.py  # Perplexity API wrapper
-├── octane_branding.py    # Visual branding utilities
-├── predator_engine.py    # Main orchestration script
-├── requirements.txt
-└── README.md
+```text
+octane_capital/
+├── agents/       scout, auditor, cio, proposal_cio, critic
+├── broker/       paper_broker, robinhood_mcp (stub), execution_guard
+├── risk/         risk_engine, position_sizing, rules
+├── vault/        database, repository, migrations.sql
+├── backtest/     engine, metrics
+├── strategies/   ai_semiconductor_momentum, watchlist
+├── engine.py     orchestration
+└── cli.py        CLI entry point
+tests/
+scripts/
 ```
 
-## Features
+## Tests
 
-- **Modular Architecture**: Clean separation of concerns
-- **Octane Branding**: Obsidian/Chrome aesthetic console output
-- **Ghost Mode**: Silent operation for scheduled execution
-- **Confidence Thresholding**: Only audits high-confidence tickers
-- **Persistent Storage**: All findings saved to Supabase
+```bash
+python3 -m pytest tests/ -q
+```
 
-## Notes
+## Robinhood MCP (Phase 5 stub)
 
-- The system will run without Supabase credentials (vault will be in standby mode)
-- Perplexity API rate limits apply
-- Adjust `CONFIDENCE_THRESHOLD` in `config.py` to change audit trigger threshold
+```bash
+claude mcp add robinhood-trading --transport http https://agent.robinhood.com/mcp/trading
+```
+
+The Python adapter is a guarded stub — connect MCP manually in Claude Code before live use.
 
 ---
 
-**Octane Global Trust** | Predator Investment Engine
+**Octane Capital Lab** | Research-first, risk-limited by design

@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 
 # Python
@@ -23,9 +25,11 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
 
 # Virtual Environment
 venv/
+.venv/
 ENV/
 env/
 
@@ -47,3 +51,6 @@ logs/
 # Database
 *.db
 *.sqlite
+
+# Local runtime data
+.data/
